@@ -33,7 +33,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "agent"))
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 COLLECTIONS_PATH = ROOT / "data" / "collections.json"
 STATE_PATH = ROOT / "data" / "editorial_state.json"
 STATIC_DIR = ROOT / "static"
@@ -57,6 +57,17 @@ def load_collections() -> dict:
         import master_agent
         master_agent.main()
     return json.loads(COLLECTIONS_PATH.read_text())
+
+
+def find_collection(data: dict, cid: str):
+    for c in data["collections"]:
+        if c["id"] == cid:
+            return c
+    for tp in data.get("tentpoles", []):
+        for c in tp["collections"]:
+            if c["id"] == cid:
+                return c
+    return None
 
 
 def collection_view(col: dict, state: dict) -> dict:
@@ -110,11 +121,23 @@ class Handler(BaseHTTPRequestHandler):
                 "collections": [collection_view(c, state)
                                 for c in data["collections"]],
             })
+        if path == "/api/tentpoles":
+            data = load_collections()
+            state = load_state()
+            events = []
+            for tp in data.get("tentpoles", []):
+                events.append({
+                    "id": tp["id"], "name": tp["name"], "when": tp["when"],
+                    "month": tp["month"], "day": tp["day"], "blurb": tp["blurb"],
+                    "collections": [collection_view(c, state)
+                                    for c in tp["collections"]],
+                })
+            return self._json(200, {"version": VERSION, "tentpoles": events})
         if path.startswith("/api/collections/"):
             cid = path.split("/")[3]
             data = load_collections()
             state = load_state()
-            col = next((c for c in data["collections"] if c["id"] == cid), None)
+            col = find_collection(data, cid)
             if not col:
                 return self._json(404, {"error": "no such collection"})
             view = collection_view(col, state)
@@ -162,7 +185,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(404, {"error": "unknown action"})
             save_state(state)
             data = load_collections()
-            col = next((c for c in data["collections"] if c["id"] == cid), None)
+            col = find_collection(data, cid)
             if not col:
                 return self._json(404, {"error": "no such collection"})
             return self._json(200, collection_view(col, state))
