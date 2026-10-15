@@ -1,0 +1,2 @@
+# Agentic Collections uses only the Python standard library.
+# This file exists so Render's default Python build succeeds.
