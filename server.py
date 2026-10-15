@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -170,7 +171,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8100)
+    ap.add_argument("--port", type=int,
+                    default=int(os.environ.get("PORT", 8100)))
     args = ap.parse_args()
     load_collections()  # build on first boot if needed
     srv = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
