@@ -418,21 +418,266 @@ def build_collections(catalog: list[dict]) -> list[dict]:
     return [c for c in collections if len(c["items"]) >= 8]
 
 
+def build_tentpoles(catalog):
+    """Seasonal tentpole events, each with its own specialized collections."""
+    def pick(item, why):
+        return {
+            "tmdb_id": item["tmdb_id"], "title": item["title"],
+            "media_type": item["media_type"],
+            "year": item["year"], "poster_path": item["poster_path"],
+            "vote_average": item["vote_average"],
+            "vote_count": item["vote_count"], "genres": item["genres"],
+            "why": why,
+        }
+
+    def fin(cid, name, thesis, rule, items):
+        seen, uniq = set(), []
+        for it in items:
+            if it["tmdb_id"] not in seen:
+                seen.add(it["tmdb_id"])
+                uniq.append(it)
+        return {"id": cid, "name": name, "thesis": thesis, "rule": rule,
+                "items": uniq[:MAX_PER_COLLECTION]}
+
+    def by_pop(items):
+        return sorted(items, key=lambda i: -i["popularity"])
+
+    def by_rate(items):
+        return sorted(items, key=lambda i: (-i["vote_average"], -i["vote_count"]))
+
+    def kw(words, mv=100):
+        return [i for i in catalog if i["vote_count"] >= mv
+                and any(w in i["overview_lc"] for w in words)]
+
+    def gen(g, mv=100):
+        return [i for i in catalog if g in i["genre_ids"] and i["vote_count"] >= mv]
+
+    T = []
+
+    def event(eid, name, when, month, day, blurb, cols):
+        cols = [c for c in cols if len(c["items"]) >= 8]
+        if cols:
+            T.append({"id": eid, "name": name, "when": when, "month": month,
+                      "day": day, "blurb": blurb, "collections": cols})
+
+    event("new-year", "New Year's Day", "Jan 1", 1, 1,
+          "Fresh starts, second chances, and feel-good resets.",
+          [fin("tp-newyear-second-chances", "Fresh Starts & Second Chances",
+               "New year energy: people starting over and getting it right.",
+               "Plot summaries mined for second chances and new beginnings.",
+               [pick(i, "Second chance story") for i in by_rate(kw(["second chance", "new beginning", "fresh start", "start over"]))]),
+           fin("tp-newyear-feelgood", "Feel-Good Favorites",
+               "The comfort shelf for the first weekend of the year.",
+               "Comedy-dramas rated 7.5+, sorted by popularity.",
+               [pick(i, "Feel-good pick") for i in by_pop(
+                   [i for i in catalog if 35 in i["genre_ids"] and 18 in i["genre_ids"]
+                    and i["vote_average"] >= 7.5 and i["vote_count"] >= 300])])])
+
+    event("super-bowl", "Super Bowl Sunday", "Early Feb", 2, 8,
+          "Game day stories: the gridiron, the underdogs, the dynasties.",
+          [fin("tp-superbowl-gameday", "Game Day: Sports Stories",
+               "Football first, but every sport with a scoreboard is welcome.",
+               "Plot summaries mined for football and sports terms, 100+ votes.",
+               [pick(i, "Sports story") for i in by_pop(kw(["football", "quarterback", "baseball", "basketball", "coach"]))]),
+           fin("tp-superbowl-underdogs", "Underdogs & Champions",
+               "The dramatic cut of the sports shelf.",
+               "Sports stories in the Drama genre, top rated.",
+               [pick(i, "Sports drama") for i in by_rate(
+                   [i for i in kw(["football", "quarterback", "baseball", "basketball", "coach"])
+                    if 18 in i["genre_ids"]])])])
+
+    event("valentines", "Valentine's Day", "Feb 14", 2, 14,
+          "Romance shelved two ways: popular and dramatic.",
+          [fin("tp-valentines-romance", "Valentine's Romance",
+               "The most-loved romance titles in the catalog.",
+               "Romance genre, sorted by popularity.",
+               [pick(i, "Romance favorite") for i in by_pop(gen(10749))]),
+           fin("tp-valentines-dramas", "Romantic Dramas",
+               "Love with real stakes and better dialogue.",
+               "Romance + Drama, rated 7.0+, 300+ votes.",
+               [pick(i, "Romantic drama") for i in by_rate(
+                   [i for i in catalog if 10749 in i["genre_ids"] and 18 in i["genre_ids"]
+                    and i["vote_average"] >= 7.0 and i["vote_count"] >= 300])])])
+
+    event("st-patricks", "St. Patrick's Day", "Mar 17", 3, 17,
+          "Stories from and about Ireland.",
+          [fin("tp-stpatricks-irish", "Irish Stories",
+               "Dublin streets, Irish families, and emigrant tales.",
+               "Plot summaries mined for Ireland and Irish life.",
+               [pick(i, "Irish story") for i in by_pop(kw(["ireland", "irish", "dublin"]))])])
+
+    event("oscars", "Oscars & Awards Season", "March", 3, 15,
+          "The prestige window: what the industry celebrates.",
+          [fin("tp-oscars-elite", "Awards Season Elite",
+               "Only the highest-rated, most-voted titles in the building.",
+               "Rated 8.5+ with 1,000+ votes.",
+               [pick(i, f"Rated {i['vote_average']:.1f}") for i in by_rate(
+                   [i for i in catalog if i["vote_average"] >= 8.5 and i["vote_count"] >= 1000])]),
+           fin("tp-oscars-dramas", "Critics' Choice Dramas",
+               "The drama shelf the critics would program.",
+               "Drama genre, rated 8.0+, 1,000+ votes.",
+               [pick(i, "Critics' drama") for i in by_rate(
+                   [i for i in catalog if 18 in i["genre_ids"] and i["vote_average"] >= 8.0
+                    and i["vote_count"] >= 1000])])])
+
+    event("easter", "Easter", "Spring", 4, 5,
+          "Faith, renewal, and family weekend viewing.",
+          [fin("tp-easter-faith", "Faith & Inspiration",
+               "Stories of belief, doubt, and grace.",
+               "Plot summaries mined for faith themes.",
+               [pick(i, "Faith story") for i in by_pop(kw(["faith", "bible", "jesus", "god"]))]),
+           fin("tp-easter-family", "Easter Family Marathon",
+               "Top family titles for the long weekend.",
+               "Family genre, top rated, 300+ votes.",
+               [pick(i, "Family favorite") for i in by_rate(
+                   [i for i in gen(10751, 300) if i["vote_average"] >= 7.0])])])
+
+    event("mothers-day", "Mother's Day", "May", 5, 10,
+          "For and about moms.",
+          [fin("tp-mothers-stories", "Stories of Mom",
+               "Mothers at the center of the story.",
+               "Plot summaries mined for mothers and moms.",
+               [pick(i, "Mom at the center") for i in by_pop(kw(["mother", " mom "]))]),
+           fin("tp-mothers-family", "Family Bonds",
+               "The family-genre cut of the mom shelf.",
+               "Family genre titles about mothers.",
+               [pick(i, "Family bond story") for i in by_rate(
+                   [i for i in kw(["mother", " mom "]) if 10751 in i["genre_ids"]])])])
+
+    event("memorial-day", "Memorial Day", "Late May", 5, 25,
+          "Remembrance weekend: war stories and true service.",
+          [fin("tp-memorial-war", "War & Remembrance",
+               "The war shelf, programmed for the holiday.",
+               "War genre, sorted by popularity.",
+               [pick(i, "War story") for i in by_pop(gen(10752))]),
+           fin("tp-memorial-true", "True War Stories",
+               "Drawn from real events and real people.",
+               "War genre + true-story plot cues.",
+               [pick(i, "True war story") for i in by_rate(
+                   [i for i in gen(10752) if "true story" in i["overview_lc"]
+                    or "based on" in i["overview_lc"]])])])
+
+    event("fathers-day", "Father's Day", "June", 6, 21,
+          "Dads: heroes, disasters, and everything between.",
+          [fin("tp-fathers-stories", "Stories of Dad",
+               "Fathers at the center of the story.",
+               "Plot summaries mined for fathers and dads.",
+               [pick(i, "Dad at the center") for i in by_pop(kw(["father", " dad "]))]),
+           fin("tp-fathers-dramas", "Father & Family Dramas",
+               "The dramatic cut of the dad shelf.",
+               "Drama genre titles about fathers.",
+               [pick(i, "Dad drama") for i in by_rate(
+                   [i for i in kw(["father", " dad "]) if 18 in i["genre_ids"]])])])
+
+    event("july-4th", "Independence Day", "Jul 4", 7, 4,
+          "American stories, history, and peak summer spectacle.",
+          [fin("tp-july4-american", "American Stories",
+               "History-genre titles for the holiday weekend.",
+               "History genre, top rated, 200+ votes.",
+               [pick(i, "American history") for i in by_rate(
+                   [i for i in gen(36, 200) if i["vote_average"] >= 7.0])]),
+           fin("tp-july4-blockbusters", "Summer Blockbusters",
+               "Action built for the loudest weekend of the year.",
+               "Action genre, sorted by popularity.",
+               [pick(i, "Summer blockbuster") for i in by_pop(gen(28, 300))]),
+           fin("tp-july4-summer", "Beach & Summer Vibes",
+               "Sun, surf, and summer trouble.",
+               "Plot summaries mined for summer and beach stories.",
+               [pick(i, "Summer story") for i in by_pop(kw(["summer", "beach"]))])])
+
+    event("back-to-school", "Back to School", "September", 9, 1,
+          "Hall passes, first days, and campus chaos.",
+          [fin("tp-school-highschool", "Back to School: High School",
+               "The high school shelf for the season.",
+               "Plot summaries mined for high school stories.",
+               [pick(i, "High school story") for i in by_pop(kw(["high school"]))]),
+           fin("tp-school-campus", "Campus Life",
+               "College towns, dorms, and degrees of trouble.",
+               "Plot summaries mined for college and campus life.",
+               [pick(i, "Campus story") for i in by_pop(kw(["college", "campus", "university"]))])])
+
+    event("halloween", "Halloween", "Oct 31", 10, 31,
+          "Spooky season HQ: the biggest tentpole in streaming.",
+          [fin("tp-halloween-essentials", "Spooky Season Essentials",
+               "The most popular horror in the catalog.",
+               "Horror genre, sorted by popularity.",
+               [pick(i, "Horror essential") for i in by_pop(gen(27))]),
+           fin("tp-halloween-masterpieces", "Horror Masterpieces",
+               "The critically feared cut.",
+               "Horror genre, top rated, 300+ votes.",
+               [pick(i, "Horror masterpiece") for i in by_rate(
+                   [i for i in gen(27, 300) if i["vote_average"] >= 7.0])]),
+           fin("tp-halloween-monsters", "Monster Mash",
+               "Vampires, zombies, werewolves, ghosts, and things unnamed.",
+               "Plot summaries mined for monsters and creatures.",
+               [pick(i, "Monster feature") for i in by_pop(kw(["vampire", "zombie", "werewolf", "monster", "ghost"]))]),
+           fin("tp-halloween-family", "Family Frights",
+               "Spooky, not scarred: horror the whole family survives.",
+               "Horror titles also tagged Family or Animation.",
+               [pick(i, "Family fright") for i in by_pop(
+                   [i for i in gen(27) if 10751 in i["genre_ids"] or 16 in i["genre_ids"]])])])
+
+    event("thanksgiving", "Thanksgiving", "November", 11, 26,
+          "Home, food, family, and football weather.",
+          [fin("tp-thanks-food", "Food & the Table",
+               "Chefs and kitchens for the food holiday.",
+               "Plot summaries mined for cooking and restaurants.",
+               [pick(i, "Food story") for i in by_pop(kw(["chef", "cooking", "restaurant"]))]),
+           fin("tp-thanks-family", "Home for Thanksgiving",
+               "Family titles to run all weekend.",
+               "Family genre, sorted by popularity.",
+               [pick(i, "Family favorite") for i in by_pop(gen(10751, 300))]),
+           fin("tp-thanks-dramas", "Family Gathering Dramas",
+               "Relatives, secrets, and one long table.",
+               "Family + Drama, rated 7.0+, 300+ votes.",
+               [pick(i, "Family drama") for i in by_rate(
+                   [i for i in catalog if 10751 in i["genre_ids"] and 18 in i["genre_ids"]
+                    and i["vote_average"] >= 7.0 and i["vote_count"] >= 300])])])
+
+    event("christmas", "Christmas", "Dec 25", 12, 25,
+          "The biggest shelf of the year.",
+          [fin("tp-christmas-stories", "Christmas Stories",
+               "Every Christmas plot in the catalog, one shelf.",
+               "Plot summaries mined for Christmas; seasonal quality bar.",
+               [pick(i, "Christmas story") for i in by_pop(kw(["christmas"], mv=25))]),
+           fin("tp-christmas-family", "Christmas Family Marathon",
+               "Family-genre holiday viewing.",
+               "Family genre + Christmas plot cues.",
+               [pick(i, "Christmas family pick") for i in by_rate(
+                   [i for i in kw(["christmas"], mv=25) if 10751 in i["genre_ids"]])]),
+           fin("tp-christmas-romance", "Holiday Romance",
+               "Romance under the mistletoe.",
+               "Romance genre + holiday plot cues.",
+               [pick(i, "Holiday romance") for i in by_rate(
+                   [i for i in kw(["christmas", "holiday", "santa", "mistletoe",
+                                   "reindeer", "festive", "north pole", "winter",
+                                   "snow"], mv=10)
+                    if 10749 in i["genre_ids"]])])])
+
+    return T
+
 def main():
     catalog = load_catalog()
     collections = build_collections(catalog)
+    tentpoles = build_tentpoles(catalog)
     payload = {
         "source": "TMDB catalog fixture (Synth Farm asset library)",
         "catalog_size": len(catalog),
         "attribution": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
         "collections": collections,
+        "tentpoles": tentpoles,
     }
     OUTPUT_PATH.write_text(json.dumps(payload, indent=1))
     total = sum(len(c["items"]) for c in collections)
+    tp_total = sum(len(c["items"]) for t in tentpoles for c in t["collections"])
     print(f"Master agent crawled {len(catalog)} titles -> "
-          f"{len(collections)} collections, {total} total picks")
+          f"{len(collections)} collections, {total} total picks; "
+          f"{len(tentpoles)} tentpoles, {tp_total} seasonal picks")
     for c in collections:
         print(f"  {c['name']}: {len(c['items'])}")
+    for t in tentpoles:
+        names = ", ".join(f"{c['name']} ({len(c['items'])})" for c in t["collections"])
+        print(f"  [TP] {t['name']}: {names}")
 
 
 if __name__ == "__main__":
