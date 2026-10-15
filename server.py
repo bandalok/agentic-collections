@@ -33,7 +33,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "agent"))
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 COLLECTIONS_PATH = ROOT / "data" / "collections.json"
 STATE_PATH = ROOT / "data" / "editorial_state.json"
 STATIC_DIR = ROOT / "static"
