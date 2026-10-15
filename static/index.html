@@ -15,7 +15,12 @@
   header h1 { font-size:26px; margin:0; letter-spacing:-.3px; }
   .ver { font-size:12px; font-weight:700; color:var(--dim); background:#1a2230;
          padding:3px 10px; border-radius:10px; }
-  .sub { color:var(--dim); font-size:14px; padding:0 28px 18px; }
+  .tabs { display:flex; gap:8px; padding:10px 28px 0; }
+  .tab { background:#141b26; border:1px solid var(--border); color:var(--dim);
+         font-size:15px; font-weight:700; padding:10px 20px; border-radius:10px;
+         cursor:pointer; }
+  .tab.active { background:#1d9bf0; border-color:#1d9bf0; color:#fff; }
+  .sub { color:var(--dim); font-size:14px; padding:14px 28px 18px; }
   .sub button { margin-left:10px; }
   main { padding:0 28px 40px; }
   table { width:100%; border-collapse:collapse; background:var(--panel);
@@ -43,6 +48,18 @@
   button.unapprove { background:#2a3542; color:var(--text); }
   button.rerun { background:#2a3542; color:var(--text); border:none; font-size:13px;
                  font-weight:700; padding:8px 14px; border-radius:8px; cursor:pointer; }
+  /* tentpole tab */
+  .section-title { font-size:20px; font-weight:800; margin:26px 0 4px; }
+  .section-title:first-child { margin-top:6px; }
+  .section-sub { color:var(--dim); font-size:13.5px; margin-bottom:14px; }
+  .upnext { background:rgba(48,209,88,.15); color:var(--green); font-size:11px;
+            font-weight:800; padding:4px 10px; border-radius:10px;
+            text-transform:uppercase; letter-spacing:.4px; }
+  .event-block { margin-bottom:30px; }
+  .event-head { display:flex; align-items:baseline; gap:12px; margin:20px 0 4px; }
+  .event-head h3 { margin:0; font-size:18px; }
+  .event-head .when { color:var(--blue); font-weight:700; font-size:13px; }
+  .event-blurb { color:var(--dim); font-size:13.5px; margin-bottom:12px; }
   /* detail view */
   .back { background:none; border:none; color:var(--blue); font-size:15px;
           font-weight:700; cursor:pointer; padding:0 0 14px; }
@@ -81,6 +98,10 @@
 <header>
   <h1>Agentic Collections</h1><span class="ver" id="ver"></span>
 </header>
+<div class="tabs">
+  <button class="tab" id="tab-collections" onclick="showTable()">Collections</button>
+  <button class="tab" id="tab-tentpoles" onclick="showTentpoles()">Tentpole Events</button>
+</div>
 <div class="sub" id="sub"></div>
 <main id="main"></main>
 <footer>This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
@@ -90,20 +111,20 @@ const main = document.getElementById('main');
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const poster = p => p ? `https://image.tmdb.org/t/p/w185${p}` : '';
+let currentView = 'collections';
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
   return r.json();
 }
 
-async function showTable() {
-  const data = await api('/api/collections');
-  document.getElementById('ver').textContent = 'v' + data.version;
-  document.getElementById('sub').innerHTML =
-    `The master agent crawled <b>${data.catalog_size.toLocaleString()}</b> titles and built ` +
-    `<b>${data.collections.length}</b> collections. Click an item count to review its titles.` +
-    `<button class="rerun" onclick="rerunAgent()">Re-run master agent</button>`;
-  const rows = data.collections.map(c => `
+function setTabs() {
+  document.getElementById('tab-collections').classList.toggle('active', currentView === 'collections');
+  document.getElementById('tab-tentpoles').classList.toggle('active', currentView === 'tentpoles');
+}
+
+function collectionRow(c) {
+  return `
     <tr>
       <td>
         <div class="cname">${esc(c.name)}</div>
@@ -118,19 +139,85 @@ async function showTable() {
             ? `<button class="act unapprove" onclick="setApprove('${c.id}', false)">Approved ✓</button>`
             : `<button class="act approve" onclick="setApprove('${c.id}', true)">Approve</button>`}
       </td>
-    </tr>`).join('');
-  main.innerHTML = `
+    </tr>`;
+}
+
+function collectionsTable(cols) {
+  return `
     <table>
       <thead><tr>
         <th>Collection</th><th>Total # of Items</th><th>Status</th><th>Action</th>
       </tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${cols.map(collectionRow).join('')}</tbody>
     </table>`;
+}
+
+async function showTable() {
+  currentView = 'collections'; setTabs();
+  const data = await api('/api/collections');
+  document.getElementById('ver').textContent = 'v' + data.version;
+  document.getElementById('sub').innerHTML =
+    `The master agent crawled <b>${data.catalog_size.toLocaleString()}</b> titles and built ` +
+    `<b>${data.collections.length}</b> collections. Click an item count to review its titles.` +
+    `<button class="rerun" onclick="rerunAgent()">Re-run master agent</button>`;
+  main.innerHTML = collectionsTable(data.collections);
+}
+
+function nextDate(tp) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let d = new Date(now.getFullYear(), tp.month - 1, tp.day);
+  if (d < today) d = new Date(now.getFullYear() + 1, tp.month - 1, tp.day);
+  return d;
+}
+
+async function showTentpoles() {
+  currentView = 'tentpoles'; setTabs();
+  const data = await api('/api/tentpoles');
+  document.getElementById('ver').textContent = 'v' + data.version;
+  const DAY = 86400000;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const events = data.tentpoles
+    .map(tp => ({...tp, next: nextDate(tp)}))
+    .filter(tp => (tp.next - today) / DAY <= 92)
+    .sort((a, b) => a.next - b.next);
+  const fmt = d => d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+  const totalCols = events.reduce((n, tp) => n + tp.collections.length, 0);
+  document.getElementById('sub').innerHTML =
+    `Seasonal programming for the <b>next 3 months</b>: <b>${events.length}</b> tentpole events, ` +
+    `<b>${totalCols}</b> specialized collections built by the master agent.`;
+  const calRows = events.map((tp, idx) => `
+    <tr>
+      <td><span class="cname">${esc(tp.name)}</span> ${idx === 0 ? '<span class="upnext">Up next</span>' : ''}</td>
+      <td>${esc(tp.when)}</td>
+      <td>${fmt(tp.next)}</td>
+      <td>${tp.collections.length}</td>
+      <td>${tp.collections.reduce((n, c) => n + c.total_items, 0).toLocaleString()}</td>
+    </tr>`).join('');
+  const blocks = events.map(tp => `
+    <div class="event-block">
+      <div class="event-head"><h3>${esc(tp.name)}</h3><span class="when">${esc(tp.when)} · ${fmt(tp.next)}</span></div>
+      <div class="event-blurb">${esc(tp.blurb)}</div>
+      ${collectionsTable(tp.collections)}
+    </div>`).join('');
+  main.innerHTML = `
+    <div class="section-title">Section 1 · Holiday calendar</div>
+    <div class="section-sub">Tentpole events in the next 3 months, in date order.</div>
+    <table>
+      <thead><tr>
+        <th>Event</th><th>When</th><th>Next date</th><th>Collections</th><th>Total titles</th>
+      </tr></thead>
+      <tbody>${calRows}</tbody>
+    </table>
+    <div class="section-title">Section 2 · Collections for it</div>
+    <div class="section-sub">The specialized seasonal collections the agent built for each event. Click a count to review and trim titles, then approve.</div>
+    ${blocks || '<div class="empty">No tentpole events in the next 3 months.</div>'}`;
+  window.scrollTo(0, 0);
 }
 
 async function setApprove(id, on) {
   await api(`/api/collections/${id}/${on ? 'approve' : 'unapprove'}`, {method:'POST'});
-  showTable();
+  if (currentView === 'tentpoles') showTentpoles(); else showTable();
 }
 
 async function rerunAgent() {
@@ -159,7 +246,7 @@ async function showDetail(id) {
     <div class="rrow"><span>${esc(i.title)} (${i.year ?? '—'})</span>
       <button onclick="restoreItem('${c.id}', ${i.tmdb_id})">Restore</button></div>`).join('');
   main.innerHTML = `
-    <button class="back" onclick="showTable()">← All collections</button>
+    <button class="back" onclick="${currentView === 'tentpoles' ? 'showTentpoles()' : 'showTable()'}">← Back</button>
     <div class="detail-head">
       <h2>${esc(c.name)} <span class="status ${c.status}">${c.status}</span></h2>
       <div class="rule">How the agent built it: ${esc(c.rule)}</div>
