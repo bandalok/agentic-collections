@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: agentic-collections
+    runtime: python
+    plan: free
+    buildCommand: ""
+    startCommand: python3 server.py
+    healthCheckPath: /
+    autoDeploy: true
