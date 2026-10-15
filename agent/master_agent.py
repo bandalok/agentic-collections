@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CATALOG_PATH = ROOT / "data" / "catalog_tmdb.json"
 OUTPUT_PATH = ROOT / "data" / "collections.json"
 
-MAX_PER_COLLECTION = 60
+MAX_PER_COLLECTION = 150
 
 GENRE_NAMES = {
     28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy",
