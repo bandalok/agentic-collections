@@ -74,6 +74,7 @@ def pick(item: dict, why: str) -> dict:
         "vote_average": item["vote_average"],
         "vote_count": item["vote_count"],
         "popularity": item["popularity"],
+        "providers": item["providers"],
         "why": why,
     }
 
@@ -427,6 +428,7 @@ def build_tentpoles(catalog):
             "year": item["year"], "poster_path": item["poster_path"],
             "vote_average": item["vote_average"],
             "vote_count": item["vote_count"], "genres": item["genres"],
+            "providers": item["providers"],
             "why": why,
         }
 
