@@ -58,6 +58,7 @@ def load_catalog() -> list[dict]:
             "vote_average": float(raw.get("vote_average") or 0),
             "vote_count": int(raw.get("vote_count") or 0),
             "providers": raw.get("providers_flatrate") or [],
+            "lang": raw.get("original_language") or "",
         })
     return items
 
@@ -256,6 +257,163 @@ def build_collections(catalog: list[dict]) -> list[dict]:
         "The strongest titles Netflix US is carrying right now.",
         "Available on Netflix US, 300+ votes, sorted by popularity.",
         [pick(i, "On Netflix") for i in by_popularity(netflix)])
+
+# ------------------------------------------------------------------
+    # Fine-grained generators: the agent mines the catalog itself.
+    # ------------------------------------------------------------------
+
+    # A. Theme mining over plot summaries.
+    THEMES = [
+        ("detectives", "Detective Stories", "Whodunits, procedurals, and dogged investigators.",
+         ["detective", "private investigator"], 100),
+        ("survival", "Fight to Survive", "Stranded, hunted, or left for dead. They endure.",
+         ["survive", "survival", "stranded"], 100),
+        ("music-stage", "Music & the Stage", "Bands, singers, and the price of the spotlight.",
+         ["band", "musician", " singer", "rock star", "concert"], 100),
+        ("high-school", "High School Years", "Lockers, first loves, and growing up in public.",
+         ["high school"], 100),
+        ("prison", "Behind Bars", "Prisons, inmates, and the long road out.",
+         ["prison", "inmate"], 100),
+        ("revenge", "Revenge Plots", "They came back for the people who wronged them.",
+         ["revenge", "vengeance"], 100),
+        ("magic-worlds", "Magic & Sorcery", "Wizards, witches, and spells that cut both ways.",
+         ["wizard", "witch", "magic spell", " sorcerer", "sorcery"], 100),
+        ("haunted", "Haunted Houses & Ghosts", "Something in this house is not at rest.",
+         ["haunted", "haunting", " ghost"], 100),
+        ("assassins", "Assassins & Hitmen", "Professionals. The target never sees it coming.",
+         ["assassin", "hitman"], 100),
+        ("kidnapped", "Kidnapped", "Taken. The clock is running.",
+         ["kidnap"], 100),
+        ("robots-ai", "Robots & AI", "Machines that think, feel, and sometimes rebel.",
+         ["robot", "artificial intelligence", "android"], 100),
+        ("mafia", "Mob & Cartel", "Families, cartels, and business conducted in whispers.",
+         ["mafia", "mob boss", "cartel", "gangster"], 100),
+        ("fight-game", "Fighters", "Boxers, brawlers, and one more round.",
+         ["boxer", "boxing", " fighter", "martial artist"], 100),
+        ("superheroes", "Superhero Stories", "Capes, powers, and impossible choices.",
+         ["superhero", "super hero"], 100),
+        ("spies", "Spies & Secret Agents", "Cover names, dead drops, and double crosses.",
+         ["spy", "secret agent", " espionage"], 100),
+        ("cult", "Cults & True Believers", "Charismatic leaders and the people who follow them anywhere.",
+         [" cult"], 100),
+        ("courtroom", "Courtroom Dramas", "Objection. The verdict is the twist.",
+         ["courtroom", "trial of", " lawyer"], 100),
+        ("thieves", "Thieves & Con Artists", "Not a heist crew. Lone wolves and long cons.",
+         ["thief", "thieves", "con artist"], 100),
+        ("weddings", "Weddings & Almost-Weddings", "Something borrowed, something ruined.",
+         ["wedding"], 100),
+        ("vampires", "Vampire Tales", "Older than the town, thirstier than ever.",
+         ["vampire"], 100),
+        ("christmas", "Christmas Stories", "Snow, second chances, and one perfect gift.",
+         ["christmas"], 100),
+        ("serial-killers", "Serial Killer Files", "Profilers, patterns, and the one who got away.",
+         ["serial killer"], 100),
+        ("food", "In the Kitchen", "Chefs, restaurants, and recipes worth fighting for.",
+         ["chef", "cooking", "restaurant"], 100),
+        ("dragons", "Here Be Dragons", "Wings, fire, and the riders who dare.",
+         ["dragon"], 100),
+        ("undercover", "Undercover", "Deep cover. Blown cover. No way back.",
+         ["undercover"], 100),
+        ("post-apocalyptic", "After the Fall", "The world ended. The story starts now.",
+         ["post-apocalyptic", "apocalypse", "wasteland"], 100),
+        ("zombies", "Zombie Outbreak", "Don't get bitten.",
+         ["zombie"], 100),
+        ("pirates", "Pirates & the High Seas", "Maps, mutinies, and buried gold.",
+         ["pirate"], 100),
+        ("dinosaurs", "Dinosaurs!", "Extinct is only a suggestion.",
+         ["dinosaur"], 100),
+        ("road-trip", "Road Trips", "Wrong turns, full tanks, no plan.",
+         ["road trip"], 100),
+    ]
+    for tid, tname, tthesis, words, min_votes in THEMES:
+        raw = [i for i in catalog
+               if i["vote_count"] >= min_votes
+               and any(w in i["overview_lc"] for w in words)]
+        if len(raw) >= 12:
+            add(f"theme-{tid}", tname, tthesis,
+                f"Agent mined plot summaries for this theme; {min_votes}+ votes.",
+                [pick(i, "Theme match") for i in by_popularity(raw)])
+
+    # B. Genre-pair shelves.
+    PAIRS = [
+        ((18, 80), "Crime Dramas", "Gritty character dramas with a body count."),
+        ((35, 18), "Dramedies", "Funny until it hurts, then funny again."),
+        ((18, 9648), "Mystery Dramas", "Slow-burn dramas built around one big question."),
+        ((16, 35), "Animated Comedies", "Drawn, quartered, and hilarious."),
+        ((16, 12), "Animated Adventures", "Hand-drawn quests and CG epics."),
+        ((878, 53), "Sci-Fi Thrillers", "The future is tense."),
+        ((10749, 35), "Rom-Coms", "Meet-cute. Mess it up. Win them back."),
+        ((27, 53), "Horror Thrillers", "Dread that quickens the pulse."),
+        ((28, 12), "Action Adventures", "Big stunts, bigger stakes, no seatbelts."),
+    ]
+    for (ga, gb), pname, pthesis in PAIRS:
+        raw = [i for i in catalog
+               if ga in i["genre_ids"] and gb in i["genre_ids"]
+               and i["vote_average"] >= 7.0 and i["vote_count"] >= 300]
+        if len(raw) >= 12:
+            add(f"pair-{ga}-{gb}", pname, pthesis,
+                "Genre-pair shelf, rated 7.0+, 300+ votes.",
+                [pick(i, "Genre pair") for i in by_rating(raw)])
+
+    # C. Documentaries.
+    docs = [i for i in catalog if 99 in i["genre_ids"]
+            and i["vote_average"] >= 7.0 and i["vote_count"] >= 200]
+    add("documentaries", "Documentary Deep Dives",
+        "True stories, stranger than the fiction shelves.",
+        "Documentary genre, rated 7.0+, 200+ votes.",
+        [pick(i, "Documentary") for i in by_rating(docs)])
+
+    # D. Decade shelves.
+    for start, label in [(1980, "80s Classics"), (2000, "2000s Essentials"),
+                         (2010, "2010s Defining Titles"), (2020, "The 2020s So Far")]:
+        raw = [i for i in catalog if i["year"] and start <= i["year"] <= start + 9
+               and i["vote_average"] >= 7.0 and i["vote_count"] >= 300]
+        if len(raw) >= 12:
+            add(f"decade-{start}", label,
+                f"The titles that defined {start}s viewing.",
+                f"Released {start}-{start + 9}, rated 7.0+, 300+ votes.",
+                [pick(i, f"{i['year']} release") for i in by_popularity(raw)])
+
+    # E. Language & region shelves.
+    anime = [i for i in catalog if i.get("lang") == "ja" and 16 in i["genre_ids"]
+             and i["vote_count"] >= 200]
+    add("anime-essentials", "Anime Essentials",
+        "The Japanese animation canon, series and films.",
+        "Japanese-language animation, 200+ votes.",
+        [pick(i, "Anime") for i in by_popularity(anime)])
+    LANG_SHELVES = [
+        ("ko", "K-Drama & Korean Hits", "Seoul stories the world binged."),
+        ("es", "Spanish-Language Gems", "Dramas y comedias, sin doblaje."),
+        ("hi", "Bollywood & Hindi Cinema", "Song, spectacle, and family sagas."),
+        ("fr", "French Cinema & TV", "The original art-house, still at it."),
+    ]
+    for lang, lname, lthesis in LANG_SHELVES:
+        raw = [i for i in catalog if i.get("lang") == lang and i["vote_count"] >= 100]
+        if len(raw) >= 12:
+            add(f"lang-{lang}", lname, lthesis,
+                "Original-language shelf, 100+ votes.",
+                [pick(i, "Original language pick") for i in by_popularity(raw)])
+
+    # F. Provider shelves.
+    PROVIDER_SHELVES = [
+        ("Amazon Prime Video", "Prime Video Picks", "The best of the Prime catalog."),
+        ("Hulu", "Best of Hulu", "Hulu's top shelf, movies and series."),
+        ("Crunchyroll", "Crunchyroll Anime Shelf", "What the anime crowd is watching."),
+    ]
+    for prov, pname, pthesis in PROVIDER_SHELVES:
+        raw = [i for i in catalog if prov in i["providers"]
+               and i["vote_average"] >= 7.0 and i["vote_count"] >= 300]
+        if len(raw) >= 12:
+            add(f"provider-{prov.split()[0].lower()}", pname, pthesis,
+                f"Streaming on {prov}, rated 7.0+, 300+ votes.",
+                [pick(i, f"On {prov}") for i in by_popularity(raw)])
+
+    # G. The most elite rating band.
+    club = [i for i in catalog if i["vote_average"] >= 8.5 and i["vote_count"] >= 300]
+    add("the-85-club", "The 8.5 Club",
+        "The smallest, proudest room in the catalog.",
+        "Rated 8.5 or higher with 300+ votes.",
+        [pick(i, f"Rated {i['vote_average']:.1f}") for i in by_rating(club)])
 
     return [c for c in collections if len(c["items"]) >= 8]
 
